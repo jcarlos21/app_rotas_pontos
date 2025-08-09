@@ -1,0 +1,11 @@
+streamlit
+requests
+folium
+geopy
+simplekml
+shapely
+pandas
+fastkml
+openpyxl
+lxml
+streamlit-folium
