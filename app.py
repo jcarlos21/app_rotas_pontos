@@ -105,15 +105,6 @@ if run:
             st.session_state["route_points_latlon"] = coords_latlon
             st.session_state["route_summary"] = f"Distância: {distance_m/1000:.2f} km | Duração: {duration_s/60:.1f} min"
 
-            # Mapa
-            mid_lat = coords_latlon[0][0]
-            mid_lon = coords_latlon[0][1]
-            m = folium.Map(location=[mid_lat, mid_lon], zoom_start=13, control_scale=True)
-            for (lat, lon), name in zip(coords_latlon, labels):
-                folium.Marker([lat, lon], tooltip=name).add_to(m)
-            folium.PolyLine([(lat, lon) for lon, lat in coords], weight=5).add_to(m)
-            st_folium(m, width=None, height=900)
-
             # Exportar KMZ com origem e destino
             kmz_bytes = io.BytesIO()
             tmp_path = "rota_osrm_temp.kmz"
@@ -137,7 +128,7 @@ if run:
         except Exception as e:
             st.error(f"Falha ao obter rota: {e}")
 
-# ---------------- Renderização persistente ----------------
+# ---------------- Renderização persistente (única) ----------------
 if "route_coords" in st.session_state and "route_points_latlon" in st.session_state:
     st.success(st.session_state.get("route_summary", "Rota gerada."))
     coords = st.session_state["route_coords"]
@@ -149,7 +140,7 @@ if "route_coords" in st.session_state and "route_points_latlon" in st.session_st
     for (lat, lon), name in zip(coords_latlon, labels if labels else ["Ponto"]*len(coords_latlon)):
         folium.Marker([lat, lon], tooltip=name).add_to(m)
     folium.PolyLine([(lat, lon) for lon, lat in coords], weight=5).add_to(m)
-    st_folium(m, width=None, height=900)
+    st_folium(m, width=None, height=900, key="map_persist")
 
 # ---------------- Botão de download persistente ----------------
 if "kmz_data" in st.session_state:
