@@ -1,4 +1,3 @@
-# app.py
 import os
 import io
 import folium
@@ -6,10 +5,10 @@ import streamlit as st
 import pandas as pd
 from typing import Tuple, List
 
-from streamlit_folium import st_folium  # <-- Opção B
+from streamlit_folium import st_folium
 
 from osrm_client import OSRMClient
-from kmz_utils import geojson_line_to_kmz
+from kmz_utils import geojson_line_with_markers_to_kmz
 from parsers import parse_csv_xlsx, parse_kml_bytes, parse_kmz
 
 st.set_page_config(page_title="OSRM + KMZ – Rotas por Pontos", layout="wide")
@@ -108,27 +107,32 @@ if run:
             )
 
             # --------- Mapa (grandão) com streamlit-folium ---------
-            # Centraliza no primeiro ponto
             mid_lat, mid_lon = coords_latlon[0]
             m = folium.Map(location=[mid_lat, mid_lon], zoom_start=13, control_scale=True)
 
-            # Marcadores
             for (lat, lon), name in zip(coords_latlon, labels):
                 folium.Marker([lat, lon], tooltip=name).add_to(m)
 
-            # Rota
             folium.PolyLine([(lat, lon) for lon, lat in coords], weight=5).add_to(m)
 
-            # Render responsivo, largura máxima do layout wide e altura 820px
             st_folium(m, width=None, height=820)
 
-            # --------- Exportar KMZ ----------
+            # --------- Exportar KMZ com marcadores ----------
+            origem_latlon = coords_latlon[0]
+            destino_latlon = coords_latlon[-1]
+            nome_origem = (labels[0] if labels else "Origem")
+            nome_destino = (labels[-1] if labels else "Destino")
+
             kmz_bytes = io.BytesIO()
             tmp_path = "rota_osrm_temp.kmz"
-            geojson_line_to_kmz(
-                coords,
+            geojson_line_with_markers_to_kmz(
+                coords,                      # lista [lon,lat] da rota (OSRM)
+                origem_latlon,               # (lat, lon)
+                destino_latlon,              # (lat, lon)
                 tmp_path,
-                name="Rota OSRM",
+                route_name="Rota OSRM",
+                start_name=nome_origem,
+                end_name=nome_destino,
                 description=f"{profile} – {distance_m/1000:.2f} km",
             )
             with open(tmp_path, "rb") as f:
@@ -137,7 +141,6 @@ if run:
             kmz_data = kmz_bytes.getvalue()
             os.remove(tmp_path)
 
-            # Guarda na sessão para manter o botão após reruns
             st.session_state["kmz_data"] = kmz_data
 
             st.download_button(
@@ -150,7 +153,6 @@ if run:
         except Exception as e:
             st.error(f"Falha ao obter rota: {e}")
 
-# Botão permanece visível em reruns automáticos, se já houver KMZ
 if "kmz_data" in st.session_state:
     st.download_button(
         label="📥 Baixar KMZ (última rota)",
