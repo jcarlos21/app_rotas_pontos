@@ -4,7 +4,6 @@ import folium
 import streamlit as st
 import pandas as pd
 from typing import Tuple, List
-
 from streamlit_folium import st_folium
 
 from osrm_client import OSRMClient
@@ -54,16 +53,12 @@ if mode == "Arquivo (múltiplos pontos)":
 
             st.success(f"{len(df)} ponto(s) carregado(s). A **ordem do arquivo** será respeitada.")
             labels = df["NOME"].astype(str).tolist()
-            coords_latlon = list(
-                zip(df["LATITUDE"].astype(float), df["LONGITUDE"].astype(float))
-            )
+            coords_latlon = list(zip(df["LATITUDE"].astype(float), df["LONGITUDE"].astype(float)))
         except Exception as e:
             st.error(f"Erro ao ler arquivo: {e}")
 
 else:
-    st.write(
-        "Forneça as duas coordenadas no formato `lat, lon` (ex.: `-5.8484, -35.8393`)."
-    )
+    st.write("Forneça as duas coordenadas no formato `lat, lon` (ex.: `-5.8484, -35.8393`).")
     c1, c2 = st.columns(2)
     with c1:
         s1 = st.text_input("Coordenada A (lat, lon)", value="-5.79448, -35.21100")
@@ -100,65 +95,63 @@ if run:
             route = client.route_multi(coords_latlon, overview="full")
             distance_m = route["distance"]
             duration_s = route["duration"]
-            coords = route["geometry"]["coordinates"]  # [[lon, lat], ...]
+            coords = route["geometry"]["coordinates"]  # [[lon,lat], ...]
 
-            # --------- Persistir dados da rota para sobreviver a reruns ---------
+            st.success(f"Distância: {distance_m/1000:.2f} km | Duração: {duration_s/60:.1f} min | Pontos: {len(coords_latlon)}")
+
+            # Salvar estado para persistência
             st.session_state["route_coords"] = coords
             st.session_state["route_labels"] = labels
             st.session_state["route_points_latlon"] = coords_latlon
-            st.session_state["route_summary"] = (
-                f"Distância: {distance_m/1000:.2f} km | Duração: {duration_s/60:.1f} min | Pontos: {len(coords_latlon)}"
-            )
-            st.session_state["route_profile"] = profile
+            st.session_state["route_summary"] = f"Distância: {distance_m/1000:.2f} km | Duração: {duration_s/60:.1f} min"
 
-            # --------- Exportar KMZ com marcadores ----------
-            origem_latlon = coords_latlon[0]
-            destino_latlon = coords_latlon[-1]
-            nome_origem = (labels[0] if labels else "Origem")
-            nome_destino = (labels[-1] if labels else "Destino")
+            # Mapa
+            mid_lat = coords_latlon[0][0]
+            mid_lon = coords_latlon[0][1]
+            m = folium.Map(location=[mid_lat, mid_lon], zoom_start=13, control_scale=True)
+            for (lat, lon), name in zip(coords_latlon, labels):
+                folium.Marker([lat, lon], tooltip=name).add_to(m)
+            folium.PolyLine([(lat, lon) for lon, lat in coords], weight=5).add_to(m)
+            st_folium(m, width=None, height=900)
 
+            # Exportar KMZ com origem e destino
             kmz_bytes = io.BytesIO()
             tmp_path = "rota_osrm_temp.kmz"
             geojson_line_with_markers_to_kmz(
-                coords,                      # lista [lon,lat] da rota (OSRM)
-                origem_latlon,               # (lat, lon)
-                destino_latlon,              # (lat, lon)
+                coords,
+                coords_latlon[0],      # origem (lat, lon)
+                coords_latlon[-1],     # destino (lat, lon)
                 tmp_path,
                 route_name="Rota OSRM",
-                start_name=nome_origem,
-                end_name=nome_destino,
-                description=f"{profile} – {distance_m/1000:.2f} km",
+                start_name="Origem",
+                end_name="Destino",
+                description=f"{profile} – {distance_m/1000:.2f} km"
             )
             with open(tmp_path, "rb") as f:
                 kmz_bytes.write(f.read())
             kmz_bytes.seek(0)
-            kmz_data = kmz_bytes.getvalue()
             os.remove(tmp_path)
 
-            st.session_state["kmz_data"] = kmz_data
+            st.session_state["kmz_data"] = kmz_bytes
 
         except Exception as e:
             st.error(f"Falha ao obter rota: {e}")
 
-# ---------------- Renderização persistente (sobrevive a reruns) ----------------
+# ---------------- Renderização persistente ----------------
 if "route_coords" in st.session_state and "route_points_latlon" in st.session_state:
     st.success(st.session_state.get("route_summary", "Rota gerada."))
-
     coords = st.session_state["route_coords"]
     labels = st.session_state.get("route_labels", [])
     coords_latlon = st.session_state["route_points_latlon"]
 
     mid_lat, mid_lon = coords_latlon[0]
     m = folium.Map(location=[mid_lat, mid_lon], zoom_start=13, control_scale=True)
-
     for (lat, lon), name in zip(coords_latlon, labels if labels else ["Ponto"]*len(coords_latlon)):
         folium.Marker([lat, lon], tooltip=name).add_to(m)
-
     folium.PolyLine([(lat, lon) for lon, lat in coords], weight=5).add_to(m)
+    st_folium(m, width=None, height=900)
 
-    st_folium(m, width=None, height=820)
-
-# Botão de download permanece visível em reruns, se já houver KMZ
+# ---------------- Botão de download persistente ----------------
 if "kmz_data" in st.session_state:
     st.download_button(
         label="📥 Baixar KMZ",

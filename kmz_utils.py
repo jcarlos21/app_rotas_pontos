@@ -1,54 +1,28 @@
-from fastkml import kml
-from shapely.geometry import LineString, Point
-import zipfile
-import os
+import simplekml
 
-def geojson_line_with_markers_to_kmz(coords, origem_latlon, destino_latlon, kmz_path, route_name="Rota", start_name="Origem", end_name="Destino", description=""):
-    # coords vem como [[lon, lat], ...] do OSRM
-    line = LineString([(lon, lat) for lon, lat in coords])
-    start_point = Point(origem_latlon[1], origem_latlon[0])
-    end_point = Point(destino_latlon[1], destino_latlon[0])
+def geojson_line_with_markers_to_kmz(coords_lonlat, start_latlon, end_latlon, output_path,
+                                     route_name="Rota", start_name="Início", end_name="Fim", description=""):
+    """
+    Cria um arquivo KMZ contendo:
+      - Linha da rota (verde, espessura 4.0)
+      - Marcador de início
+      - Marcador de fim
+    """
+    kml = simplekml.Kml()
 
-    ns = "{http://www.opengis.net/kml/2.2}"
-    k = kml.KML()
-    d = kml.Document(ns, 'docid', route_name, description)
-    f = kml.Folder(ns, 'fid', route_name)
+    # Linha da rota
+    ls = kml.newlinestring(name=route_name, description=description)
+    ls.coords = [(lon, lat) for lon, lat in coords_lonlat]
+    ls.style.linestyle.color = simplekml.Color.rgb(0, 255, 0)  # Verde
+    ls.style.linestyle.width = 4.0
 
-    # Estilo da linha (verde e espessura 4.0)
-    style_id = "routeStyle"
-    style = kml.Style(
-        ns,
-        style_id,
-        LineStyle=kml.LineStyle(ns, color="ff00ff00", width=4.0)  # ff00ff00 = verde
-    )
-    d.append_style(style)
+    # Marcador de início
+    p_start = kml.newpoint(name=start_name, coords=[(start_latlon[1], start_latlon[0])])
+    p_start.style.iconstyle.color = simplekml.Color.yellow
 
-    # Placemark da rota
-    placemark_route = kml.Placemark(ns, 'route', route_name, description)
-    placemark_route.append_styleUrl(f"#{style_id}")
-    placemark_route.geometry = line
-    f.append(placemark_route)
+    # Marcador de fim
+    p_end = kml.newpoint(name=end_name, coords=[(end_latlon[1], end_latlon[0])])
+    p_end.style.iconstyle.color = simplekml.Color.yellow
 
-    # Placemark origem
-    placemark_start = kml.Placemark(ns, 'start', start_name)
-    placemark_start.geometry = start_point
-    f.append(placemark_start)
-
-    # Placemark destino
-    placemark_end = kml.Placemark(ns, 'end', end_name)
-    placemark_end.geometry = end_point
-    f.append(placemark_end)
-
-    d.append(f)
-    k.append(d)
-
-    # Salvar como KML temporário
-    kml_temp_path = kmz_path.replace(".kmz", ".kml")
-    with open(kml_temp_path, 'w', encoding='utf-8') as f_out:
-        f_out.write(k.to_string(prettyprint=True))
-
-    # Compactar em KMZ
-    with zipfile.ZipFile(kmz_path, 'w', compression=zipfile.ZIP_DEFLATED) as kmz:
-        kmz.write(kml_temp_path, arcname=os.path.basename(kml_temp_path))
-
-    os.remove(kml_temp_path)
+    # Salvar KMZ
+    kml.savekmz(output_path)
