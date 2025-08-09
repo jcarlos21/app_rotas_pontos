@@ -1,53 +1,54 @@
-import simplekml
-from typing import List, Tuple, Optional
+from fastkml import kml
+from shapely.geometry import LineString, Point
+import zipfile
+import os
 
-# Mantém a função antiga (compatibilidade)
-def geojson_line_to_kmz(coords_lonlat: List[Tuple[float, float]], output_path: str, name: str = "Rota", 
-                         description: Optional[str] = None) -> str:
-    kml = simplekml.Kml()
-    ls = kml.newlinestring(name=name, description=description)
-    # coords_lonlat já está como [(lon,lat), ...]
-    ls.coords = [(lon, lat) for lon, lat in coords_lonlat]
-    ls.extrude = 0
-    ls.tessellate = 1
-    ls.altitudemode = simplekml.AltitudeMode.clamptoground
-    kml.savekmz(output_path)
-    return output_path
+def geojson_line_with_markers_to_kmz(coords, origem_latlon, destino_latlon, kmz_path, route_name="Rota", start_name="Origem", end_name="Destino", description=""):
+    # coords vem como [[lon, lat], ...] do OSRM
+    line = LineString([(lon, lat) for lon, lat in coords])
+    start_point = Point(origem_latlon[1], origem_latlon[0])
+    end_point = Point(destino_latlon[1], destino_latlon[0])
 
-# Nova função com marcadores de origem/destino
-def geojson_line_with_markers_to_kmz(
-    coords_lonlat: List[Tuple[float, float]],
-    start_latlon: Tuple[float, float],
-    end_latlon: Tuple[float, float],
-    output_path: str,
-    route_name: str = "Rota",
-    start_name: str = "Origem",
-    end_name: str = "Destino",
-    description: Optional[str] = None,
-) -> str:
-    """
-    Gera um KMZ contendo:
-      - a rota (LineString) a partir de coords [lon, lat]
-      - um marcador para a origem (start_latlon = [lat, lon])
-      - um marcador para o destino (end_latlon = [lat, lon])
-    """
-    kml = simplekml.Kml()
+    ns = "{http://www.opengis.net/kml/2.2}"
+    k = kml.KML()
+    d = kml.Document(ns, 'docid', route_name, description)
+    f = kml.Folder(ns, 'fid', route_name)
 
-    # Linha da rota
-    ls = kml.newlinestring(name=route_name, description=description)
-    ls.coords = [(lon, lat) for lon, lat in coords_lonlat]
-    ls.tessellate = 1
-    ls.altitudemode = simplekml.AltitudeMode.clamptoground
+    # Estilo da linha (verde e espessura 4.0)
+    style_id = "routeStyle"
+    style = kml.Style(
+        ns,
+        style_id,
+        LineStyle=kml.LineStyle(ns, color="ff00ff00", width=4.0)  # ff00ff00 = verde
+    )
+    d.append_style(style)
 
-    # Marcador de origem
-    s_lat, s_lon = start_latlon
-    p_start = kml.newpoint(name=start_name, coords=[(s_lon, s_lat)])
+    # Placemark da rota
+    placemark_route = kml.Placemark(ns, 'route', route_name, description)
+    placemark_route.append_styleUrl(f"#{style_id}")
+    placemark_route.geometry = line
+    f.append(placemark_route)
 
-    # Marcador de destino
-    e_lat, e_lon = end_latlon
-    p_end = kml.newpoint(name=end_name, coords=[(e_lon, e_lat)])
+    # Placemark origem
+    placemark_start = kml.Placemark(ns, 'start', start_name)
+    placemark_start.geometry = start_point
+    f.append(placemark_start)
 
-    # (Opcional) estilos de ícones/cores podem ser definidos aqui
+    # Placemark destino
+    placemark_end = kml.Placemark(ns, 'end', end_name)
+    placemark_end.geometry = end_point
+    f.append(placemark_end)
 
-    kml.savekmz(output_path)
-    return output_path
+    d.append(f)
+    k.append(d)
+
+    # Salvar como KML temporário
+    kml_temp_path = kmz_path.replace(".kmz", ".kml")
+    with open(kml_temp_path, 'w', encoding='utf-8') as f_out:
+        f_out.write(k.to_string(prettyprint=True))
+
+    # Compactar em KMZ
+    with zipfile.ZipFile(kmz_path, 'w', compression=zipfile.ZIP_DEFLATED) as kmz:
+        kmz.write(kml_temp_path, arcname=os.path.basename(kml_temp_path))
+
+    os.remove(kml_temp_path)
